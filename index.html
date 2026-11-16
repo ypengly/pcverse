@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PCVERSE — The Computer Laboratory</title>
+<style>
+:root{--bg:#101215;--panel:#171a1f;--line:#2a2f37;--tx:#e6e9ee;--mu:#8e97a4;--cy:#3fd0ff;--or:#ff8a3d;--rd:#ff4d4d;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 "Segoe UI",system-ui,sans-serif;overflow:hidden}
+#app{display:grid;grid-template-columns:1fr 380px;grid-template-rows:auto 1fr;height:100%}
+header{grid-column:1/3;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+h1{font-size:16px;margin:0 10px 0 0;letter-spacing:.04em}
+button,select,input{background:#1f242b;color:var(--tx);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--cy)}button.on{border-color:var(--cy);color:var(--cy)}
+input{cursor:text;min-width:150px}
+#stage{position:relative;min-height:0}canvas{display:block;width:100%;height:100%;touch-action:none}
+#lbls div{position:absolute;font-size:11px;color:var(--cy);background:#0008;padding:1px 5px;border-radius:4px;pointer-events:none;white-space:nowrap}
+#hint{position:absolute;left:12px;bottom:10px;color:var(--mu);font-size:12px}
+#res{position:absolute;top:0;left:0;background:var(--panel);border:1px solid var(--line);border-radius:6px;display:none;z-index:5;max-height:260px;overflow:auto}
+#res div{padding:6px 10px;cursor:pointer}#res div:hover{background:#242a32}
+aside{border-left:1px solid var(--line);background:var(--panel);overflow:auto;padding:12px}
+aside h2{margin:0 0 2px;font-size:18px}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin:10px 0}.tabs button{padding:3px 8px;font-size:12px}
+#body{white-space:pre-line;min-height:120px}
+.sev{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;border:1px solid var(--line)}
+.chip{display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border:1px solid var(--cy);color:var(--cy);border-radius:12px;cursor:pointer}
+.note{color:var(--mu);font-size:12px;margin-top:10px}
+@media(max-width:800px){#app{grid-template-columns:1fr;grid-template-rows:auto 55% 1fr}header{grid-column:1}aside{border-left:0;border-top:1px solid var(--line)}}
+</style></head><body>
+<div id="app">
+<header><h1>PCVERSE</h1>
+<button id="bL" class="on">Laptop Lab</button><button id="bD">Desktop PC Lab</button>
+<button id="bE">Explode all</button><button id="bC">Remove cover/panel</button><button id="bB">Show labels</button><button id="bR">Reset view</button>
+<select id="xm"><option value="0">Normal view</option><option value="1">Semi-transparent casing</option><option value="2">Internal hardware</option><option value="3">Motherboard only</option><option value="4">Connection view</option></select><select id="vw"><option value="">Camera view…</option><option>Front</option><option>Rear</option><option>Top</option><option>Bottom</option><option>Left</option><option>Right</option></select><button id="bW">Wireframe</button><button id="bF">Focus</button><button id="bH">Hide</button><button id="bI">Isolate</button><button id="bX">Compare</button><select id="lv"><option value="0">Beginner</option><option value="1">Intermediate</option><option value="2">Advanced</option></select>
+<span style="position:relative"><input id="q" placeholder="Search: overheating, no display…"><div id="res"></div></span></header>
+<div id="stage"><div id="lbls"></div><div id="hint">Drag to rotate · scroll or pinch to zoom · click a part</div></div>
+<aside><h2 id="nm">Select a component</h2><div id="sub" class="note">Click any part of the 3D model, or search for a symptom.</div>
+<div class="tabs" id="tabs"></div><div id="body"></div><div id="rel"></div><div id="sim"></div>
+<div class="note">All failure behavior shown here is simulated for learning. PCVERSE never inspects or diagnoses your real hardware. Layouts vary by manufacturer and model. 3D parts are simplified reference-style models with illustrative traces and details, not real photographs or manufacturer diagrams.</div></aside>
+</div>
+<div id="cmp" style="display:none;position:fixed;inset:60px 20px 20px;z-index:9;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;overflow:auto"><style>#ct table{border-collapse:collapse;width:100%;margin-top:10px}#ct td,#ct th{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}</style><select id="cs"></select> <button id="cx">Close</button><div id="ct"></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---------- Hardware knowledge base ----------
+const DB={
+cpu:{n:"CPU (Processor)",a:["The computer’s brain. It follows instructions one tiny step at a time, billions of times a second.","The processor executes program instructions using cores, caches and a memory controller.","Multi-core CPU with superscalar out-of-order pipeline, L1/L2/L3 cache, integrated memory controller and PCIe lanes."],
+ d:"Runs the operating system and apps, and coordinates all other parts.",h:"Fetch an instruction from memory, decode it, execute it, access memory if needed, then store the result. Repeat billions of times per second.",c:["ram","mb","cool","gpu","ssd"],p:"Overheating, thermal throttling, failure to boot, random crashes.\nSymptoms: sudden slowdowns, loud fan, shutdowns, no POST.",f:"Check temperatures, clean dust, reapply thermal paste, reseat cooler, update BIOS, verify power connectors.",t:"Socket LGA/AM-class · 65–250 W · 3–6 GHz boost · ~1 V core voltage · DDR memory controller on die."},
+ram:{n:"RAM (Memory)",a:["Short-term memory. It holds what you are working on right now so the CPU can grab it fast.","Volatile memory that stores running programs and data; contents vanish at power-off.","DDR4/DDR5 DRAM DIMM/SO-DIMM; dual-channel, 64-bit bus per channel, CAS latency and XMP/EXPO profiles."],
+ d:"Temporarily stores data and instructions the CPU needs quickly.",h:"1. CPU requests data.\n2. Memory controller finds the address.\n3. Data is read from or written to DRAM cells.\n4. CPU gets it far faster than from storage.",c:["cpu","mb"],p:"Random crashes, blue screens, unexpected restarts, boot failure, memory errors.\nCauses: defective module, incompatible RAM, poor contact, unstable overclock, wrong BIOS settings.",f:"Run a memory diagnostic, reseat modules, test one stick at a time, check compatibility, reset BIOS, replace if faulty.",t:"DDR4 1.2 V · DDR5 1.1 V · 3200–8000 MT/s · 288/262-pin DIMM."},
+ssd:{n:"SSD / NVMe Storage",a:["Where your files and Windows live permanently, even when the power is off.","Flash storage with no moving parts; much faster than a hard drive.","NAND flash with controller, wear leveling, DRAM/HMB cache; NVMe over PCIe x4 (up to ~14 GB/s on Gen5)."],
+ d:"Stores the operating system, apps and personal files.",h:"The controller maps logical addresses to NAND pages, reads or writes charge states in cells, and performs wear leveling and error correction.",c:["mb","cpu"],p:"Drive not detected, slow transfers, corrupted files, freezes.\nCauses: worn NAND, firmware bugs, loose M.2 screw, heat, power loss.",f:"Back up first. Reseat the drive, check BIOS detection, run SMART tools, update firmware, replace if failing.",t:"M.2 2280 · PCIe 3.0/4.0/5.0 x4 · 3.3 V · NVMe 1.4+."},
+fan:{n:"Cooling Fan",a:["A small fan that blows hot air out so the computer does not get too hot.","Pulls air across the heatsink and exhausts it through vents.","PWM-controlled blower or axial fan, 2000–6000 RPM, 5/12 V, tachometer feedback to the embedded controller."],
+ d:"Moves air through the heatsink to remove heat.",h:"The controller reads temperature sensors and sets fan PWM duty. Faster spin moves more air, carrying heat out.",c:["cool","mb"],p:"Loud noise, no spin, overheating, shutdowns.\nCauses: dust, worn bearings, blocked vents, failed header.",f:"Clean vents and blades with compressed air, check the fan connector, replace the fan.",t:"12 V PWM 25 kHz · 4-pin header · 20–70 CFM."},
+cool:{n:"Heatsink & Heat Pipes",a:["A metal block that pulls heat away from the processor, like a radiator.","Copper heat pipes move heat to fins where air carries it away.","Vapor-chamber heat pipes use phase change of working fluid for high effective conductivity; thermal paste fills micro gaps."],
+ d:"Spreads and removes heat from CPU and GPU.",h:"Heat flows through thermal paste into a copper base, travels along heat pipes, and is released from aluminium fins by airflow.",c:["cpu","fan","gpu"],p:"Overheating from dust, dried paste or loose mounting.",f:"Clean dust, reapply paste, check mounting pressure.",t:"Copper base · aluminium fins · 3–8 pipes · paste 1–12 W/mK."},
+mb:{n:"Motherboard",a:["The big circuit board every part plugs into. It is the computer’s road network.","Connects CPU, memory, storage and I/O with buses, and distributes power through VRMs.","Multi-layer PCB with chipset/PCH, VRM phases, PCIe lanes, BIOS/UEFI flash and CMOS battery."],
+ d:"Connects and powers every component.",h:"Traces carry data and power. VRMs convert 12 V to ~1 V for the CPU. The chipset routes USB, SATA and PCIe.",c:["cpu","ram","ssd","gpu","psu","bat"],p:"Failed power circuits, swollen capacitors, shorts, BIOS corruption.\nSymptoms: no power, no POST, random shutdowns.",f:"Inspect for bulged capacitors, clear CMOS, reseat parts, test with minimal parts, professional repair or replacement.",t:"ATX 305×244 mm · 4–12 layer PCB · 12 V input · 3 V CMOS battery."},
+gpu:{n:"GPU (Graphics)",a:["The part that draws everything you see on the screen, especially games and video.","Thousands of small cores render triangles and pixels in parallel.","SIMT architecture with shader cores, RT/tensor units, GDDR6/6X VRAM on a wide bus, PCIe 4.0/5.0 x16."],
+ d:"Renders images and sends them to the display.",h:"Geometry is transformed, rasterized into pixels, shaded, then written to the frame buffer and output over HDMI/DisplayPort.",c:["mb","psu","cool","cpu"],p:"Artifacts, driver crashes, overheating, no display.\nCauses: heat, driver faults, power shortage, failing VRAM.",f:"Reseat the card, plug in PCIe power, reinstall drivers, clean fans, test another cable or card.",t:"PCIe x16 · 75 W slot + 8/12-pin · 150–450 W · GDDR6/6X."},
+psu:{n:"Power Supply (PSU)",a:["Turns wall power into the gentle power the parts can use.","Converts AC mains to regulated 12 V, 5 V and 3.3 V rails.","ATX PSU with active PFC, LLC resonant stage, 80 PLUS efficiency; 24-pin, EPS 8-pin and PCIe connectors."],
+ d:"Supplies stable power to every component.",h:"AC is rectified, switched at high frequency through a transformer, then filtered into DC rails.",c:["mb","gpu","cpu"],p:"No power, random shutdowns, clicking, burning smell.",f:"Check the wall switch and cable, test with a PSU tester, replace if suspect. Never open a PSU.",t:"550–1000 W · 80 PLUS Bronze–Titanium · 12 V main rail."},
+bat:{n:"Battery",a:["Stores energy so the laptop works without a plug.","Lithium-ion cells powered the system and are charged by the adapter.","Multi-cell Li-ion/Li-polymer pack with BMS, protection IC and fuel gauge, ~11.4–15.4 V."],
+ d:"Powers the laptop away from the outlet.",h:"The charger IC feeds the pack; the battery management system balances cells and reports charge to the OS.",c:["mb"],p:"Reduced capacity, not charging, sudden shutdowns, swelling.",f:"Try another charger, check battery report, replace the pack. Stop using a swollen battery.",t:"3S/4S Li-ion · 40–99 Wh · 300–1000 cycles."},
+wifi:{n:"Wi-Fi / Bluetooth Card",a:["Lets the computer connect wirelessly to the internet.","M.2 module with antennas for Wi-Fi and Bluetooth.","802.11ax/be radio over PCIe/USB interface with MIMO antennas."],
+ d:"Provides wireless networking.",h:"Radio signals are modulated and demodulated into data packets passed to the OS network stack.",c:["mb"],p:"No networks found, dropping signal.",f:"Reseat card and antennas, update driver, toggle airplane mode.",t:"M.2 2230 · 2.4/5/6 GHz."},
+scr:{n:"Display Panel",a:["The screen. It shows pictures with thousands of tiny glowing dots.","LCD/OLED panel with backlight, bezel, webcam and hinge assembly.","eDP link, 60–240 Hz, sRGB/DCI-P3 gamut."],
+ d:"Shows output from the GPU.",h:"The GPU sends frames over eDP; the timing controller drives each pixel row by row.",c:["mb","gpu"],p:"Flicker, lines, dead pixels, dark screen.",f:"Test with an external monitor, reseat the display cable, replace the panel.",t:"eDP 1.4 · 13–17 in · 1080p–4K."},
+kb:{n:"Keyboard & Touchpad",a:["The keys and pad you use to talk to the computer.","Key matrix scanned by an embedded controller.","I²C-HID/PS2 interface, scissor/mechanical switches."],
+ d:"Takes your input.",h:"Pressing a key connects a row and column; the controller converts it to a scan code.",c:["mb"],p:"Dead keys, ghosting.",f:"Clean, reseat the ribbon cable, replace keyboard.",t:"Ribbon FFC · matrix 8×18."},
+case:{n:"Case / Cover",a:["The outer shell protecting the parts and guiding airflow.","Structural housing with vents and mounting standoffs.","Steel/aluminium chassis with EMI shielding and airflow design."],
+ d:"Protects, mounts and cools components.",h:"Standoffs mount the board, vents and fans move air through.",c:["fan","mb"],p:"Dust buildup, blocked vents.",f:"Clean filters and vents.",t:"ATX mid-tower ~ 450×210×480 mm."}
+};
+const ASSETS={};/* id:{src,credit,license} — add licensed or self-shot photos here */
+const KW={overheating:["cpu","gpu","fan","cool"],heat:["cpu","gpu","fan","cool"],"no display":["gpu","ram","scr"],crash:["ram","cpu","ssd"],boot:["cpu","ram","ssd","mb"],slow:["ssd","ram","cpu"],battery:["bat","mb"],noise:["fan"],power:["psu","bat","mb"],wifi:["wifi"]};
+// ---------- Scene ----------
+const stage=document.getElementById("stage");
+const R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(devicePixelRatio,2));R.shadowMap.enabled=true;stage.appendChild(R.domElement);
+const S=new THREE.Scene();S.background=new THREE.Color(0x101215);S.fog=new THREE.Fog(0x101215,12,30);
+const cam=new THREE.PerspectiveCamera(45,1,.1,100);
+S.add(new THREE.HemisphereLight(0xbcd6ff,0x20242a,.8));
+const dl=new THREE.DirectionalLight(0xffffff,1.1);dl.position.set(5,8,5);dl.castShadow=true;S.add(dl);
+const fl=new THREE.PointLight(0x3fd0ff,.6,20);fl.position.set(-5,3,-4);S.add(fl);
+const floor=new THREE.Mesh(new THREE.CircleGeometry(9,64),new THREE.MeshStandardMaterial({color:0x15181d,roughness:.9}));floor.rotation.x=-Math.PI/2;floor.position.y=-1.2;floor.receiveShadow=true;S.add(floor);
+let grp=null,parts=[],dev="laptop",expl=0,target=0,cover=true,sel=null,lid=null,sev=0;
+function mk(id,w,h,d,col,x,y,z,ex,opt={}){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:col,metalness:opt.m??.5,roughness:opt.r??.45,transparent:!!opt.o,opacity:opt.o||1}));
+m.position.set(x,y,z);m.castShadow=true;m.userData={id,home:m.position.clone(),ex:new THREE.Vector3(...ex),cov:!!opt.cov,label:opt.l||DB[id].n};parts.push(m);(opt.p||grp).add(m);return m}
+function build(){if(grp)S.remove(grp);grp=new THREE.Group();parts=[];S.add(grp);lid=null;
+ if(dev=="laptop"){
+  mk("case",5,.16,3.4,0x9aa1ab,0,-.6,0,[0,-1.4,0],{cov:1,l:"Bottom cover",m:.9,r:.3});
+  mk("mb",3.6,.06,2.6,0x0f5c3a,0,-.46,0,[0,-.3,0],{m:.2,r:.6});
+  mk("cpu",.55,.1,.55,0xc9ced6,-.6,-.38,-.2,[0,.8,0]);
+  mk("cool",1.6,.08,.7,0xb87333,-.3,-.34,-.2,[0,1.3,-.4]);
+  mk("fan",.7,.12,.7,0x222831,.6,-.34,-.2,[1.2,1.1,-.4],{m:.3});
+  mk("ram",.9,.08,.3,0x1b6b9a,-1.2,-.4,.7,[-1.6,.6,.6]);
+  mk("ssd",.9,.06,.3,0x333a45,-1.2,-.4,1.05,[-1.6,.6,1.1]);
+  mk("wifi",.4,.05,.3,0x555e6b,.2,-.4,.9,[.4,.6,1.2]);
+  mk("bat",2.2,.14,1,0x2a2f38,1.1,-.38,.55,[1.7,.2,1.3],{m:.3});
+  mk("kb",4.4,.08,1.5,0x1a1d22,0,-.28,.5,[0,2.2,.9],{m:.2,r:.7});
+  lid=new THREE.Group();lid.position.set(0,-.2,-1.7);grp.add(lid);
+  mk("scr",4.8,.12,3.2,0x0a0c10,0,0,-1.6,[0,0,-2.4],{p:lid,m:.8,r:.15}).rotation.x=0;
+ }else{
+  mk("case",.1,4,3.6,0x2a2f38,-1.9,0,0,[-3,0,0],{cov:1,l:"Side panel",o:.35,m:.8,r:.2});
+  mk("mb",.1,3.4,2.8,0x0f5c3a,1.4,.1,0,[2.4,.4,0],{m:.2,r:.6});
+  mk("cpu",.15,.5,.5,0xc9ced6,1.25,.9,0,[1.6,1.6,0]);
+  mk("cool",.5,.9,.9,0xb87333,.95,.9,0,[.2,2,0]);
+  mk("ram",.1,.9,.12,0x1b6b9a,1.25,.9,-.9,[1.2,1.4,-.9]);
+  mk("gpu",.55,.5,2.4,0x20252c,.9,-.2,.1,[.4,-.2,2.2],{m:.7});
+  mk("psu",2,1,1.2,0x15171a,-.4,-1.6,-1,[-1.6,-1.3,-1.4]);
+  mk("ssd",.15,.7,.2,0x333a45,1.25,-.7,-1.1,[1.2,-.9,-1.4]);
+  mk("fan",.15,1,1,0x222831,-.4,.9,0,[-1.4,1.3,0],{m:.3});
+  mk("bat",.05,.05,.05,0x000000,0,-3,0,[0,0,0]).visible=false;parts.pop();
+ }
+ detail();select(null);
+}
+// ---------- Orbit ----------
+let th=.7,ph=1.05,rad=9,tgt=new THREE.Vector3(0,.2,0);
+function placeCam(){cam.position.set(tgt.x+rad*Math.sin(ph)*Math.sin(th),tgt.y+rad*Math.cos(ph),tgt.z+rad*Math.sin(ph)*Math.cos(th));cam.lookAt(tgt)}
+let dn=null,moved=0;const el=R.domElement;const pts=new Map();let pd=0;
+el.onpointerdown=e=>{el.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);moved=0;if(pts.size==2){const a=[...pts.values()];pd=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1])}};
+el.onpointermove=e=>{if(!pts.has(e.pointerId))return;const o=pts.get(e.pointerId);const dx=e.clientX-o[0],dy=e.clientY-o[1];pts.set(e.pointerId,[e.clientX,e.clientY]);moved+=Math.abs(dx)+Math.abs(dy);
+ if(pts.size==1){if(e.shiftKey||(e.buttons&2)){const k=rad*.0015,rv=new THREE.Vector3().setFromMatrixColumn(cam.matrix,0),uv=new THREE.Vector3().setFromMatrixColumn(cam.matrix,1);tgt.addScaledVector(rv,-dx*k).addScaledVector(uv,dy*k)}else{th-=dx*.008;ph=Math.max(.08,Math.min(3.05,ph-dy*.008))}}else{const a=[...pts.values()];const d=Math.hypot(a[0][0]-a[1][0],a[0][1]-a[1][1]);rad=Math.max(3,Math.min(18,rad*pd/d));pd=d}};
+el.onpointerup=e=>{pts.delete(e.pointerId);if(moved<6&&pts.size==0)pick(e)};
+el.onwheel=e=>{e.preventDefault();rad=Math.max(3,Math.min(18,rad*(1+e.deltaY*.001)))};
+const ray=new THREE.Raycaster();
+function pick(e){const r=el.getBoundingClientRect();ray.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),cam);
+ const h=ray.intersectObjects(parts.filter(p=>p.visible),true)[0];let o=h&&h.object;while(o&&!o.userData.id)o=o.parent;select(o||null)}
+// ---------- UI ----------
+const $=id=>document.getElementById(id);let tab=0,labels=false;
+const TABS=["What is it?","What does it do?","How it works","Connections","Problems & symptoms","How to fix","Technical"];
+function select(m){sel=m;sev=0;parts.forEach(p=>{p.material.emissive.setHex(0)});if(m)m.material.emissive.setHex(0x0b4d66);applyMode();render()}
+function render(){const id=sel?sel.userData.id:null;$("tabs").innerHTML="";$("rel").innerHTML="";$("sim").innerHTML="";
+ if(!id){$("nm").textContent="Select a component";$("body").textContent="";$("sub").style.display="";return}
+ const D=DB[id];$("sub").style.display="none";$("nm").textContent=D.n;
+ TABS.forEach((t,i)=>{const b=document.createElement("button");b.textContent=t;if(i==tab)b.className="on";b.onclick=()=>{tab=i;render()};$("tabs").appendChild(b)});
+ const lvl=+$("lv").value;
+ const body=[D.a[lvl],D.d,D.h,"Connects to: "+D.c.map(c=>DB[c].n).join(", "),D.p,D.f,D.t][tab];$("body").textContent=body;
+ D.c.forEach(c=>{const s=document.createElement("span");s.className="chip";s.textContent=DB[c].n;s.onclick=()=>jump(c);$("rel").appendChild(s)});
+ const A=ASSETS[id];$("rel").insertAdjacentHTML("beforeend",A?`<p><img src="${A.src}" alt="${D.n}" style="max-width:100%;border-radius:6px"><br><span class="note">Real photograph · ${A.credit} · ${A.license}</span></p>`:`<p class="note" style="border:1px dashed var(--line);padding:8px;border-radius:6px">Real photo: none bundled yet. Add a licensed or self-shot image to ASSETS["${id}"] with credit and license and it appears here beside the 3D model. Published pages cannot hotlink outside images.</p>`);
+ const names=["Normal","Warning","Critical","Failed"],cols=["#3fd0ff","#ff8a3d","#ff4d4d","#8a1c1c"];
+ $("sim").innerHTML=`<p><button id="bs">Simulate failure (step)</button> <span class="sev" style="color:${cols[sev]};border-color:${cols[sev]}">Simulated: ${names[sev]}</span></p>`;
+ $("bs").onclick=()=>{sev=(sev+1)%4;sel.material.emissive.setHex([0x0b4d66,0x663300,0x880000,0x220000][sev]);if(sev==3)tab=4;render()};
+}
+function jump(id){const m=parts.find(p=>p.userData.id==id);if(m){iso=null;m.userData.hid=0;if(!allowed(m)){xm=0;$("xm").value="0"}select(m);tgt.copy(m.getWorldPosition(new THREE.Vector3()));}}
+$("lv").onchange=render;
+$("bL").onclick=()=>sw("laptop");$("bD").onclick=()=>sw("desktop");
+function sw(d){dev=d;$("bL").className=d=="laptop"?"on":"";$("bD").className=d=="desktop"?"on":"";cover=true;expl=0;target=0;$("bE").textContent="Explode all";$("bE").className="";xm=0;wire=false;iso=null;$("xm").value="0";$("bW").className="";$("bI").className="";build();resetV()}
+$("bE").onclick=()=>{target=target?0:1;$("bE").textContent=target?"Assemble all":"Explode all";$("bE").className=target?"on":""};
+$("bC").onclick=()=>{cover=!cover;$("bC").className=cover?"":"on";applyMode()};
+$("bB").onclick=()=>{labels=!labels;$("bB").className=labels?"on":"";$("bB").textContent=labels?"Hide labels":"Show labels"};
+function resetV(){th=.7;ph=1.05;rad=dev=="laptop"?8:10;tgt.set(0,.2,0)}$("bR").onclick=()=>{resetV();parts.forEach(p=>p.userData.hid=0);iso=null;$("bI").className="";select(null);target=0;$("bE").textContent="Explode all"};
+const q=$("q");q.oninput=()=>{const v=q.value.toLowerCase().trim();const out=$("res");if(!v){out.style.display="none";return}
+ let ids=new Set();Object.keys(KW).forEach(k=>{if(k.includes(v)||v.includes(k))KW[k].forEach(i=>ids.add(i))});
+ Object.keys(DB).forEach(i=>{const D=DB[i];if((D.n+D.d+D.p+D.t).toLowerCase().includes(v))ids.add(i)});
+ out.innerHTML="";ids.forEach(i=>{const d=document.createElement("div");d.textContent=DB[i].n;d.onclick=()=>{const has=parts.some(p=>p.userData.id==i);if(!has){const o=dev=="laptop"?"desktop":"laptop";sw(o)}jump(i);out.style.display="none";q.value=""};out.appendChild(d)});
+ out.style.display=ids.size?"block":"none";if(!ids.size){out.innerHTML="<div>No match</div>";out.style.display="block"}};
+const fans=[];let xm=0,wire=false,iso=null,links=[];
+function pcb(){const c=document.createElement("canvas");c.width=c.height=256;const x=c.getContext("2d");x.fillStyle="#0c4a30";x.fillRect(0,0,256,256);x.strokeStyle="#1f8a5a";x.lineWidth=1.5;for(let i=0;i<70;i++){let a=Math.random()*256,b=Math.random()*256;x.beginPath();x.moveTo(a,b);for(let k=0;k<4;k++){if(k%2)b+=(Math.random()-.5)*80;else a+=(Math.random()-.5)*80;x.lineTo(a,b)}x.stroke()}x.fillStyle="#d4af37";for(let i=0;i<120;i++)x.fillRect(Math.random()*256,Math.random()*256,3,3);return new THREE.CanvasTexture(c)}
+function detail(){fans.length=0;const M=(c,m,r)=>new THREE.MeshStandardMaterial({color:c,metalness:m,roughness:r}),D=dev=="desktop";
+ parts.forEach(p=>{const id=p.userData.id,g=p.geometry.parameters,o=new THREE.Group(),th=(D?g.width:g.height)/2;if(D)o.rotation.z=Math.PI/2;p.add(o);
+  const spin=(x,z,sc)=>{const s=new THREE.Group();s.position.set(x,th+.01,z);s.scale.setScalar(sc);for(let i=0;i<7;i++){const a=new THREE.Group();a.rotation.y=i*Math.PI*2/7;const b=new THREE.Mesh(new THREE.BoxGeometry(.3,.015,.1),M(0x0a0c0f,.3,.5));b.position.x=.2;b.rotation.y=.5;a.add(b);s.add(a)}s.add(new THREE.Mesh(new THREE.CylinderGeometry(.08,.08,.04,16),M(0x888e98,.8,.3)));o.add(s);fans.push(s)};
+  if(id=="fan")spin(0,0,1);
+  if(id=="gpu"){spin(0,-.6,.7);spin(0,.6,.7);const cn=new THREE.Mesh(new THREE.BoxGeometry(.1,.3,.4),M(0x111418,.2,.8));cn.position.set(g.height/2+.05,0,-.9);o.add(cn)}
+  if(id=="cool"){const fx=D?.42:.72,fd=D?[.025,.5,.85]:[.03,.1,.66];for(let i=0;i<14;i++){const f=new THREE.Mesh(new THREE.BoxGeometry(...fd),M(0xc4c9d1,.9,.25));f.position.set(-fx+i*2*fx/13,D?0:.08,0);o.add(f)}}
+  if(id=="mb"){p.material.map=pcb();p.material.color.set(0xffffff);p.material.needsUpdate=true;const ex=(D?g.height:g.width)/2-.12,ez=g.depth/2-.12;[[1,1],[1,-1],[-1,1],[-1,-1]].forEach(s=>{const sc=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.03,12),M(0xb8bec8,.9,.3));sc.position.set(s[0]*ex,th+.01,s[1]*ez);o.add(sc)});for(let i=0;i<16;i++){const cp=new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,.12,12),M(i%3?0x1a1d22:0xc4a24a,.4,.5));cp.position.set((Math.random()-.5)*2*(ex-.3),th+.06,(Math.random()-.5)*2*(ez-.3));o.add(cp)}}});
+ parts.forEach(p=>{p.userData.o0=p.material.opacity});applyMode()}
+function allowed(p){const u=p.userData;if(u.hid||(iso&&p!==iso))return false;if(u.cov)return cover&&xm<2;if(xm==3)return["mb","cpu","ram","ssd","wifi"].includes(u.id);return true}
+function applyMode(){parts.forEach(p=>{const u=p.userData;p.material.transparent=true;let t=allowed(p)?(u.cov&&xm==1?.15:u.o0):0;if(xm==4&&!u.cov&&!u.hid&&!iso)t=(!sel||p===sel||DB[sel.userData.id].c.includes(u.id))?u.o0:.12;u.tOp=t;p.traverse(o=>{if(o.material)o.material.wireframe=wire})});mkLinks()}
+function mkLinks(){links.forEach(k=>{S.remove(k.l);S.remove(k.s)});links=[];if(xm!=4||!sel)return;DB[sel.userData.id].c.forEach(c=>{const b=parts.find(p=>p.userData.id==c);if(!b)return;const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),new THREE.LineBasicMaterial({color:0x3fd0ff}));l.frustumCulled=false;const s=new THREE.Mesh(new THREE.SphereGeometry(.07,10,10),new THREE.MeshBasicMaterial({color:0xffffff}));S.add(l,s);links.push({l,s,b})})}
+$("xm").onchange=e=>{xm=+e.target.value;applyMode()};
+$("vw").onchange=e=>{const v={Front:[0,1.45],Rear:[Math.PI,1.45],Top:[th,.08],Bottom:[th,3.05],Left:[-Math.PI/2,1.45],Right:[Math.PI/2,1.45]}[e.target.value];if(v){th=v[0];ph=v[1]}e.target.value=""};
+$("bW").onclick=()=>{wire=!wire;$("bW").className=wire?"on":"";applyMode()};
+$("bF").onclick=()=>{if(sel){tgt.copy(sel.getWorldPosition(new THREE.Vector3()));rad=3.5}};
+$("bH").onclick=()=>{if(sel){sel.userData.hid=1;select(null)}};
+$("bI").onclick=()=>{iso=iso?null:sel;$("bI").className=iso?"on":"";applyMode()};
+el.oncontextmenu=e=>e.preventDefault();
+addEventListener("keydown",e=>{if(e.target.tagName=="INPUT"||e.target.tagName=="SELECT")return;const k=e.key;if(k=="ArrowLeft")th+=.1;else if(k=="ArrowRight")th-=.1;else if(k=="ArrowUp")ph=Math.max(.08,ph-.1);else if(k=="ArrowDown")ph=Math.min(3.05,ph+.1);else if(k=="+"||k=="=")rad=Math.max(3,rad*.9);else if(k=="-")rad=Math.min(18,rad*1.1)});
+const CMP={"Storage: HDD vs SATA SSD vs NVMe SSD":[["","HDD","SATA SSD","NVMe SSD"],["Technology","Spinning magnetic platters","NAND flash","NAND flash"],["Interface","SATA III (6 Gb/s)","SATA III (6 Gb/s)","PCIe x4, NVMe protocol"],["Typical sequential speed","about 80–160 MB/s","up to about 550 MB/s","about 3.5 GB/s (Gen3) to 7 GB/s (Gen4); Gen5 drives go higher"],["Form factor","3.5 in or 2.5 in","2.5 in (or M.2 SATA)","M.2 2280 is common"],["Moving parts","Yes, so shock-sensitive","No","No"],["Best for","Cheap bulk storage, backups","Upgrading older PCs","OS drive, games, editing"]],
+"Memory: DDR3 vs DDR4 vs DDR5":[["","DDR3","DDR4","DDR5"],["Voltage","1.5 V (DDR3L 1.35 V)","1.2 V","1.1 V"],["Desktop DIMM pins","240","288","288"],["Official data rates","800–2133 MT/s","1600–3200 MT/s","4800 MT/s and up"],["Notable change","Baseline","Higher density, lower voltage","On-module power management, two 32-bit subchannels per module"],["Compatibility","Not interchangeable: notch positions differ and boards support one generation","Same","Same"]],
+"GPU: integrated vs dedicated":[["","Integrated","Dedicated"],["Location","Inside the CPU package or die","Separate card in a PCIe x16 slot (or separate chip in some laptops)"],["Memory","Shares system RAM","Own VRAM (GDDR)"],["Power and heat","Low; uses the CPU cooler","High; own fans, heatsink and power connectors"],["Performance","Fine for desktop, video, light games","Much higher for games, 3D and AI work"],["Best for","Office, school, thin laptops","Gaming, rendering, workstations"]],
+"Cooling: air vs liquid":[["","Air cooling","Liquid cooling"],["Heat path","CPU, paste, heatsink and heat pipes, fan airflow","CPU, paste, cold plate, pump and tubes, radiator with fans"],["Parts","Heatsink and fan","Pump block, radiator, tubes, fans"],["Noise","Fan noise rises with load","Pump hum plus radiator fans"],["Failure points","Fan wear, dust","Pump failure, leaks (rare), air bubbles"],["Best for","Most builds, simple and reliable","High-power CPUs, compact or quiet builds"]],
+"CPU sockets: LGA1700 vs AM4 vs AM5":[["","Intel LGA1700","AMD AM4","AMD AM5"],["Contact type","LGA: pins in the socket","PGA: pins on the CPU","LGA: pins in the socket"],["Pins or contacts","1700","1331","1718"],["Memory","DDR4 or DDR5 depending on board","DDR4","DDR5"],["CPU generations","Intel Core 12th–14th gen","Ryzen 1000–5000 series","Ryzen 7000 series and newer"],["Note","Bent socket pins are the main install risk","Bent CPU pins are the main install risk","Bent socket pins are the main install risk"]],
+"Laptop vs desktop motherboard":[["","Laptop","Desktop"],["Layout","Model-specific, varies by manufacturer","Standard sizes: ATX, micro-ATX, mini-ITX"],["CPU","Often soldered (BGA)","Usually socketed"],["RAM","SO-DIMM slots or soldered","Full-size DIMM slots"],["Expansion","Few M.2 slots, little else","PCIe slots, many headers"],["Repair","Needs the exact model part","Standard, swappable parts"]]};
+const cs=$("cs");Object.keys(CMP).forEach(k=>{const o=document.createElement("option");o.textContent=k;cs.appendChild(o)});
+function showCmp(){const t=CMP[cs.value];$("ct").innerHTML="<table>"+t.map((r,i)=>"<tr>"+r.map(c=>i?"<td>"+c+"</td>":"<th>"+c+"</th>").join("")+"</tr>").join("")+"</table><p class=\"note\">Text comparison only: no photographs are bundled. Figures are typical ranges and vary by product.</p>"}
+cs.onchange=showCmp;$("bX").onclick=()=>{$("cmp").style.display="block";showCmp()};$("cx").onclick=()=>$("cmp").style.display="none";
+const lb=$("lbls");
+function size(){const w=stage.clientWidth,h=stage.clientHeight;R.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix()}addEventListener("resize",size);
+let T=0;function loop(){requestAnimationFrame(loop);T+=.016;expl+=(target-expl)*.08;
+ parts.forEach(p=>{const u=p.userData;p.position.copy(u.home).addScaledVector(u.ex,expl);if(sev>0&&p===sel)p.material.emissiveIntensity=.6+.4*Math.sin(T*(3+sev*3));const mt=p.material;mt.opacity+=(u.tOp-mt.opacity)*.12;p.visible=u.tOp>0||mt.opacity>.03});const fs=(sel&&sel.userData.id=="fan"&&sev>=2)?0:.3;fans.forEach(f=>f.rotation.y+=fs);
+ if(lid)lid.rotation.x=-.2-expl*.0;
+ if(!pts.size&&!sel)th+=.0008;
+ if(links.length){const A=sel.getWorldPosition(new THREE.Vector3());links.forEach((k,i)=>{const B=k.b.getWorldPosition(new THREE.Vector3());k.l.geometry.setFromPoints([A,B]);k.s.position.lerpVectors(A,B,(T*.5+i*.2)%1)})}
+ placeCam();R.render(S,cam);
+ lb.innerHTML="";if(labels)parts.forEach(p=>{if(!p.visible)return;const v=p.getWorldPosition(new THREE.Vector3()).project(cam);if(v.z>1)return;const d=document.createElement("div");d.textContent=p.userData.label;d.style.left=(v.x*.5+.5)*stage.clientWidth+"px";d.style.top=(-v.y*.5+.5)*stage.clientHeight+"px";lb.appendChild(d)})}
+resetV();build();size();loop();
+</script></body></html>
